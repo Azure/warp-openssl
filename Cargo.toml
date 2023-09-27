@@ -1,0 +1,36 @@
+[package]
+name = "warp-openssl"
+version = "0.3.0"
+edition = "2021"
+description = "OpenSSL bindings for Warp TLS server"
+license = "MIT"
+authors = ["Sandeep Bansal <sandeep.bansal85@gmail.com>"]
+readme = "README.md"
+documentation = "https://docs.rs/warp-openssl"
+repository = "https://github.com/msabansal/warp-openssl"
+categories = ["web-programming::http-server"]
+keywords = ["warp", "openssl", "tls", "https"]
+autotests = true
+
+
+[features]
+openssl-vendored = ["openssl/vendored"]
+
+[dependencies]
+tokio-openssl = "0.6"
+openssl = { version = "0.10" }
+tokio = { version = "1" }
+tracing = "0.1"
+futures-util = "0.3"
+warp = "0.3"
+hyper = "0.14"
+
+[dev-dependencies]
+reqwest = {version = "0.11", features = ["native-tls"]}
+rstest = "0.18.1"
+tokio = { version = "1", features = ["macros"] }
+# tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[test]]
+name = "server"
+path = "tests/server.rs"
