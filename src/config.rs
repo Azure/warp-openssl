@@ -1,7 +1,9 @@
 use std::{
+    env,
     fmt,
+    fs::File,
     io::{self, Cursor, Read, Write},
-    sync::{Arc, Mutex}, env, fs::File,
+    sync::{Arc, Mutex},
 };
 
 use openssl::{
@@ -41,12 +43,13 @@ impl fmt::Display for TlsConfigError {
 impl std::error::Error for TlsConfigError {}
 
 /// Tls client authentication configuration.
+#[derive(Debug)]
 pub(crate) enum TlsClientAuth {
     /// No client auth.
     Off,
-    /// Allow any anonymous or verification passing authenticated client.
+    /// Allow any anonymous or verification passing authenticated client with the given trust anchors.
     Optional((Vec<u8>, Arc<dyn CertificateVerifier>)),
-    /// Allow any verification passing authenticated client.
+    /// Allow any verification passing authenticated client with the given trust anchors.
     Required((Vec<u8>, Arc<dyn CertificateVerifier>)),
 }
 
@@ -55,6 +58,14 @@ pub(crate) struct TlsConfigBuilder {
     cert: Box<dyn Read + Send + Sync>,
     key: Box<dyn Read + Send + Sync>,
     client_auth: TlsClientAuth,
+}
+
+impl fmt::Debug for TlsConfigBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TlsConfigBuilder")
+            .field("client_auth", &self.client_auth)
+            .finish()
+    }
 }
 
 impl TlsConfigBuilder {
@@ -179,16 +190,15 @@ impl TlsConfigBuilder {
             }
         };
 
-        
         if let Ok(filename) = env::var("SSLKEYLOGFILE") {
             let file = Mutex::new(File::create(filename).unwrap());
-             
+
             acceptor.set_keylog_callback(move |_ssl, line| {
                 let mut file = file.lock().unwrap();
                 let _ = writeln!(&mut file, "{}", line);
             });
         };
-        
+
         Ok(SslConfig {
             acceptor: acceptor.build(),
             certificate_verifier: certificate_validator,
