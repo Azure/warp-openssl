@@ -3,14 +3,14 @@ use rstest::*;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::oneshot;
 use warp_openssl::Result;
-use warp_openssl::{certificate::CertificateVerifier, serve};
+use warp_openssl::{CertificateVerifier, serve};
 
 struct ValidCertVerifier {}
 
 impl CertificateVerifier for ValidCertVerifier {
     fn verify_certificate(
         &self,
-        _: &warp_openssl::certificate::Certificate,
+        _: &warp_openssl::Certificate,
     ) -> warp_openssl::Result<()> {
         Result::Ok(())
     }
@@ -21,7 +21,7 @@ struct InValidCertVerifier {}
 impl CertificateVerifier for InValidCertVerifier {
     fn verify_certificate(
         &self,
-        _: &warp_openssl::certificate::Certificate,
+        _: &warp_openssl::Certificate,
     ) -> warp_openssl::Result<()> {
         Result::Err("Invalid certificate".into())
     }

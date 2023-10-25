@@ -42,11 +42,10 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type Result<T> = std::result::Result<T, Error>;
 
 mod acceptor;
-#[doc(hidden)]
-pub mod certificate;
+mod certificate;
 mod config;
-#[doc(hidden)]
-pub mod server;
+mod server;
+pub use server::{OpensslServer, serve};
 mod stream;
 
-pub use server::serve;
+pub use certificate::{Certificate, CertificateVerifier};
