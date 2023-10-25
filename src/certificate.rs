@@ -1,3 +1,6 @@
+use core::fmt;
+use std::fmt::{Debug, Formatter};
+
 use crate::Result;
 
 /// Certificate information for a TLS connection.
@@ -23,4 +26,10 @@ pub trait CertificateVerifier: Send + Sync {
     /// Verify the certificate. If the certificate is valid, return `Ok(())`.
     /// Otherwise, return an error.
     fn verify_certificate(&self, end_entity: &Certificate) -> Result<()>;
+}
+
+impl Debug for dyn CertificateVerifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CertificateVerifier").finish()
+    }
 }

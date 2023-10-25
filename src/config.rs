@@ -1,7 +1,9 @@
 use std::{
+    env,
     fmt,
+    fs::File,
     io::{self, Cursor, Read, Write},
-    sync::{Arc, Mutex}, env, fs::File,
+    sync::{Arc, Mutex},
 };
 
 use openssl::{
@@ -44,10 +46,33 @@ impl std::error::Error for TlsConfigError {}
 pub(crate) enum TlsClientAuth {
     /// No client auth.
     Off,
-    /// Allow any anonymous or verification passing authenticated client.
+    /// Allow any anonymous or verification passing authenticated client with the given trust anchors.
     Optional((Vec<u8>, Arc<dyn CertificateVerifier>)),
-    /// Allow any verification passing authenticated client.
+    /// Allow any verification passing authenticated client with the given trust anchors.
     Required((Vec<u8>, Arc<dyn CertificateVerifier>)),
+}
+
+impl fmt::Debug for TlsClientAuth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TlsClientAuth::Off => f
+                .debug_struct("TlsClientAuth")
+                .field("type", &"Off")
+                .finish(),
+            TlsClientAuth::Optional((anchors, verifier)) => f
+                .debug_struct("TlsClientAuth")
+                .field("type", &"Optional")
+                .field("trust_anchors", anchors)
+                .field("verifier", verifier)
+                .finish(),
+            TlsClientAuth::Required((anchors, verifier)) => f
+                .debug_struct("TlsClientAuth")
+                .field("type", &"Optional")
+                .field("trust_anchors", anchors)
+                .field("verifier", verifier)
+                .finish(),
+        }
+    }
 }
 
 /// Builder to set the configuration for the Tls server.
@@ -55,6 +80,14 @@ pub(crate) struct TlsConfigBuilder {
     cert: Box<dyn Read + Send + Sync>,
     key: Box<dyn Read + Send + Sync>,
     client_auth: TlsClientAuth,
+}
+
+impl fmt::Debug for TlsConfigBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TlsConfigBuilder")
+            .field("client_auth", &self.client_auth)
+            .finish()
+    }
 }
 
 impl TlsConfigBuilder {
@@ -179,16 +212,15 @@ impl TlsConfigBuilder {
             }
         };
 
-        
         if let Ok(filename) = env::var("SSLKEYLOGFILE") {
             let file = Mutex::new(File::create(filename).unwrap());
-             
+
             acceptor.set_keylog_callback(move |_ssl, line| {
                 let mut file = file.lock().unwrap();
                 let _ = writeln!(&mut file, "{}", line);
             });
         };
-        
+
         Ok(SslConfig {
             acceptor: acceptor.build(),
             certificate_verifier: certificate_validator,

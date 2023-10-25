@@ -42,6 +42,7 @@ macro_rules! bind {
     }};
 }
 
+/// Create an `OpensslServer` with the provided `Filter`.
 pub fn serve<F>(filter: F) -> OpensslServer<F> {
     OpensslServer {
         filter,
@@ -51,6 +52,8 @@ pub fn serve<F>(filter: F) -> OpensslServer<F> {
 
 
 /// Create an openssl based TLS warp server with the provided filter.
+/// 
+#[derive(Debug)]
 pub struct OpensslServer<F> {
     filter: F,
     tls: TlsConfigBuilder,
