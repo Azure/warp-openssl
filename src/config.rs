@@ -43,6 +43,7 @@ impl fmt::Display for TlsConfigError {
 impl std::error::Error for TlsConfigError {}
 
 /// Tls client authentication configuration.
+#[derive(Debug)]
 pub(crate) enum TlsClientAuth {
     /// No client auth.
     Off,
@@ -50,29 +51,6 @@ pub(crate) enum TlsClientAuth {
     Optional((Vec<u8>, Arc<dyn CertificateVerifier>)),
     /// Allow any verification passing authenticated client with the given trust anchors.
     Required((Vec<u8>, Arc<dyn CertificateVerifier>)),
-}
-
-impl fmt::Debug for TlsClientAuth {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TlsClientAuth::Off => f
-                .debug_struct("TlsClientAuth")
-                .field("type", &"Off")
-                .finish(),
-            TlsClientAuth::Optional((anchors, verifier)) => f
-                .debug_struct("TlsClientAuth")
-                .field("type", &"Optional")
-                .field("trust_anchors", anchors)
-                .field("verifier", verifier)
-                .finish(),
-            TlsClientAuth::Required((anchors, verifier)) => f
-                .debug_struct("TlsClientAuth")
-                .field("type", &"Optional")
-                .field("trust_anchors", anchors)
-                .field("verifier", verifier)
-                .finish(),
-        }
-    }
 }
 
 /// Builder to set the configuration for the Tls server.
