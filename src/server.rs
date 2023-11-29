@@ -102,14 +102,15 @@ where
         self.with_tls(|tls| tls.client_auth_required(trust_anchor.as_ref(), certificate_verifier))
     }
 
-    /// Allow verification to succeed if an incomplete chain can be built. That is, a chain ending in a certificate that 
-    /// normally would not be trusted (because it has no matching positive trust attributes and is not self-signed) but is 
-    /// an element of the trust store. This certificate may be self-issued or belong to an intermediate CA.
+    /// **Not recommended** Disables partial certificate chain verification. 
+    /// 
+    /// For certificate pinning to work properly its enough to validate that
+    /// the certificate chains to an anchor in the trust store. This is the default behavior.
     ///
-    pub fn enable_partial_chain_verification(
+    pub fn disable_partial_chain_verification(
         self,
     ) -> Self {
-        self.with_tls(|tls| tls.enable_partial_chain_verification())
+        self.with_tls(|tls| tls.disable_partial_chain_verification())
     }
 
     fn with_tls<Func>(self, func: Func) -> Self
