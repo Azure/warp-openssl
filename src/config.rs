@@ -75,7 +75,7 @@ impl TlsConfigBuilder {
             key: Box::new(io::empty()),
             cert: Box::new(io::empty()),
             client_auth: TlsClientAuth::Off,
-            partial_chain_verification: false,
+            partial_chain_verification: true,
         }
     }
 
@@ -107,10 +107,10 @@ impl TlsConfigBuilder {
         self
     }
 
-    pub(crate) fn enable_partial_chain_verification(
+    pub(crate) fn disable_partial_chain_verification(
         mut self,
     ) -> Self {
-        self.partial_chain_verification = true;
+        self.partial_chain_verification = false;
         self
     }
 }
