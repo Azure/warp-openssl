@@ -11,7 +11,7 @@ use openssl::{
     ssl::{SslAcceptor, SslMethod, SslVerifyMode},
     x509::{
         store::{X509Store, X509StoreBuilder},
-        X509,
+        X509, verify::X509VerifyFlags,
     },
 };
 
@@ -58,6 +58,7 @@ pub(crate) struct TlsConfigBuilder {
     cert: Box<dyn Read + Send + Sync>,
     key: Box<dyn Read + Send + Sync>,
     client_auth: TlsClientAuth,
+    partial_chain_verification: bool,
 }
 
 impl fmt::Debug for TlsConfigBuilder {
@@ -74,6 +75,7 @@ impl TlsConfigBuilder {
             key: Box::new(io::empty()),
             cert: Box::new(io::empty()),
             client_auth: TlsClientAuth::Off,
+            partial_chain_verification: false,
         }
     }
 
@@ -102,6 +104,13 @@ impl TlsConfigBuilder {
         certificate_verifier: Arc<dyn CertificateVerifier>,
     ) -> Self {
         self.client_auth = TlsClientAuth::Required((Vec::from(trust_anchor), certificate_verifier));
+        self
+    }
+
+    pub(crate) fn enable_partial_chain_verification(
+        mut self,
+    ) -> Self {
+        self.partial_chain_verification = true;
         self
     }
 }
@@ -151,6 +160,7 @@ impl TlsConfigBuilder {
 
         fn read_trust_anchor(
             mut trust_anchor: &[u8],
+            partial_chain_verification: bool,
         ) -> std::result::Result<X509Store, TlsConfigError> {
             let mut cert_vec = Vec::new();
             trust_anchor
@@ -164,6 +174,10 @@ impl TlsConfigBuilder {
                 store.add_cert(cert).map_err(TlsConfigError::OpensslError)?;
             }
 
+            if partial_chain_verification {
+                store.set_flags(X509VerifyFlags::PARTIAL_CHAIN).map_err(TlsConfigError::OpensslError)?; 
+            }
+
             Ok(store.build())
         }
 
@@ -173,7 +187,7 @@ impl TlsConfigBuilder {
                 None
             }
             TlsClientAuth::Optional((trust_anchor, certificate_valiator)) => {
-                let store = read_trust_anchor(&trust_anchor)?;
+                let store = read_trust_anchor(&trust_anchor, self.partial_chain_verification)?;
                 acceptor.set_verify(SslVerifyMode::PEER);
                 acceptor
                     .set_verify_cert_store(store)
@@ -181,7 +195,7 @@ impl TlsConfigBuilder {
                 Some(certificate_valiator)
             }
             TlsClientAuth::Required((trust_anchor, certificate_validator)) => {
-                let store = read_trust_anchor(&trust_anchor)?;
+                let store = read_trust_anchor(&trust_anchor, self.partial_chain_verification)?;
                 acceptor.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
                 acceptor
                     .set_verify_cert_store(store)

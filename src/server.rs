@@ -102,6 +102,16 @@ where
         self.with_tls(|tls| tls.client_auth_required(trust_anchor.as_ref(), certificate_verifier))
     }
 
+    /// Allow verification to succeed if an incomplete chain can be built. That is, a chain ending in a certificate that 
+    /// normally would not be trusted (because it has no matching positive trust attributes and is not self-signed) but is 
+    /// an element of the trust store. This certificate may be self-issued or belong to an intermediate CA.
+    ///
+    pub fn enable_partial_chain_verification(
+        self,
+    ) -> Self {
+        self.with_tls(|tls| tls.enable_partial_chain_verification())
+    }
+
     fn with_tls<Func>(self, func: Func) -> Self
     where
         Func: FnOnce(TlsConfigBuilder) -> TlsConfigBuilder,
