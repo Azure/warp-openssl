@@ -87,9 +87,13 @@ impl TlsStream {
                 }
                 Ok(AcceptState::Ready)
             }
-            Poll::Ready(Err(e)) => Err(e
+            Poll::Ready(Err(e)) => {
+                // Log the error in case of cert verification falilure otherwise warp silently ignores this
+                tracing::error!("Error in poll_accept: {:?}", e);
+                Err(e
                 .into_io_error()
-                .unwrap_or_else(|e| io::Error::new(io::ErrorKind::Other, e))),
+                .unwrap_or_else(|e| io::Error::new(io::ErrorKind::Other, e)))
+            },
             Poll::Pending => Ok(AcceptState::Pending),
         }
     }

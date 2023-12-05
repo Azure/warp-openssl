@@ -90,6 +90,9 @@ async fn client_tests(
     let mut host_cert = include_bytes!("../certs/localhost.crt").to_vec();
     host_cert.extend(ca_cert.clone());
 
+    
+    let intermediate_cert = include_bytes!("../certs/intermediate.crt").to_vec();
+    
     let (tx, rx) = oneshot::channel();
     let server = serve(warp::Filter::map(warp::any(), || "Hello, World!"))
         .key(include_bytes!("../certs/localhost.key").to_vec())
@@ -99,18 +102,18 @@ async fn client_tests(
         AuthType::Off => server,
         AuthType::Required => match verifier_type {
             VeriferType::Valid => {
-                server.client_auth_required(ca_cert.clone(), Arc::new(ValidCertVerifier {}))
+                server.client_auth_required(intermediate_cert.clone(), Arc::new(ValidCertVerifier {}))
             }
             VeriferType::Invalid => {
-                server.client_auth_required(ca_cert.clone(), Arc::new(InValidCertVerifier {}))
+                server.client_auth_required(intermediate_cert.clone(), Arc::new(InValidCertVerifier {}))
             }
         },
         AuthType::Optional => match verifier_type {
             VeriferType::Valid => {
-                server.client_auth_optional(ca_cert.clone(), Arc::new(ValidCertVerifier {}))
+                server.client_auth_optional(intermediate_cert.clone(), Arc::new(ValidCertVerifier {}))
             }
             VeriferType::Invalid => {
-                server.client_auth_optional(ca_cert.clone(), Arc::new(InValidCertVerifier {}))
+                server.client_auth_optional(intermediate_cert.clone(), Arc::new(InValidCertVerifier {}))
             }
         },
     };
