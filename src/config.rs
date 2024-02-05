@@ -139,7 +139,7 @@ impl TlsConfigBuilder {
             .into_iter();
         let cert = cert_chain.next().ok_or(TlsConfigError::EmptyCert)?;
         let chain: Vec<_> = cert_chain.collect();
-        let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())
+        let mut acceptor = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls_server())
             .map_err(TlsConfigError::OpensslError)?;
         acceptor
             .set_private_key(&private_key)

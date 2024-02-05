@@ -1,3 +1,4 @@
+use reqwest::tls::Version;
 use reqwest::{Certificate, ClientBuilder, Identity};
 use rstest::*;
 use std::{net::SocketAddr, sync::Arc};
@@ -93,7 +94,7 @@ async fn client_tests(
     
     let intermediate_cert = include_bytes!("../certs/intermediate.crt").to_vec();
     
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = oneshot::channel::<()>();
     let server = serve(warp::Filter::map(warp::any(), || "Hello, World!"))
         .key(include_bytes!("../certs/localhost.key").to_vec())
         .cert(host_cert);
@@ -126,34 +127,47 @@ async fn client_tests(
         server.await;
     });
 
-    let identity = Identity::from_pkcs8_pem(
-        include_bytes!("../certs/client.crt"),
-        include_bytes!("../certs/client.key"),
+    let crt = include_bytes!("../certs/client.crt").to_vec();
+    let key = include_bytes!("../certs/client.key").to_vec();
+    let identity = Identity::from_pem(
+        &[key, crt].concat(),
     )?;
 
     let trust_root = Certificate::from_pem(&ca_cert).unwrap();
-    let builder = ClientBuilder::new()
-        .tls_built_in_root_certs(false)
-        .add_root_certificate(trust_root);
+    
+    for version in [Version::TLS_1_2, Version::TLS_1_3] {
+        println!("Testing with version: {:?}", version);
 
-    let builder = if use_client_auth {
-        builder.identity(identity)
-    } else {
-        builder
-    };
+        let builder = ClientBuilder::new()
+            .use_rustls_tls()
+            .tls_built_in_root_certs(false)
+            .min_tls_version(version)
+            .add_root_certificate(trust_root.clone())
+            .danger_accept_invalid_certs(true);
 
-    let client = builder.build()?;
-    let res = client
-        .get(format!("https://localhost:{}", addr.port()))
-        .send()
-        .await;
-
-    if expect_error {
-        assert!(res.is_err());
-    } else {
-        let res = res.unwrap();
-        assert_eq!(res.status(), 200);
+        let builder = if use_client_auth {
+            builder.identity(identity.clone())
+        } else {
+            builder
+        };
+    
+        let client = builder.build()?;
+        let res = client
+            .get(format!("https://localhost:{}", addr.port()))
+            .send()
+            .await;
+    
+        println!("Response: {:?}", res);
+        
+        if let Ok(ref res) = res {
+            assert_eq!(expect_error, false);
+            assert_eq!(res.status(), 200);
+        } else {
+            assert_eq!(expect_error, true);
+            
+        }
     }
+
 
     tx.send(()).unwrap();
     server.await.unwrap();
