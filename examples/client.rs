@@ -18,7 +18,8 @@ struct Args {
     port: u16,
 }
 
-
+/// For the example to work properly please generate the appropriate certificates and keys in the `certs` directory.
+/// Requires openssl to be installed.
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();

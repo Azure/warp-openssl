@@ -10,6 +10,7 @@ use crate::Result;
 use futures_util::{Future, FutureExt, TryFuture};
 
 use hyper::server::conn::AddrIncoming;
+use openssl::ssl::{SslAcceptorBuilder, SslContext};
 
 use std::convert::Infallible;
 use warp::{Filter, Reply};
@@ -50,6 +51,25 @@ pub fn serve<F>(filter: F) -> OpensslServer<F> {
     }
 }
 
+/// Settings corresponding to TLS level based on Mozilla's server side TLS recommendations.
+/// See its [documentation][docs] for more details on specifics.
+///
+/// [docs]: https://wiki.mozilla.org/Security/Server_Side_TLS
+#[derive(Debug, Clone)]
+pub enum TlsLevel {
+    /// Settings corresponding to modern configuration of version 4 of Mozilla's server side TLS
+    /// recommendations
+    MozillaModern,
+    /// Settings corresponding to modern configuration of version 5 of Mozilla's server side TLS
+    /// recommendations
+    MozillaModernV5,
+    /// Settings corresponding to the intermediate configuration of version 4 of Mozilla's server side TLS
+    /// recommendations
+    MozillaIntermediate,
+    /// Settings corresponding to the intermediate configuration of version 5 of Mozilla's server side TLS
+    /// recommendations
+    MozillaIntermediateV5
+}
 
 /// Create an openssl based TLS warp server with the provided filter.
 /// 
@@ -71,6 +91,18 @@ where
     pub fn key(self, key: impl AsRef<[u8]>) -> Self {
         self.with_tls(|tls| tls.key(key.as_ref()))
     }
+
+    /// Specify the tls level based on Mozilla's server side TLS recommendations.
+    /// See its [documentation][docs] for more details on specifics.
+    /// 
+    /// Defaults to `TlsLevel::MozillaIntermediateV5`.
+    ///
+    /// [docs]: https://wiki.mozilla.org/Security/Server_Side_TLS
+    pub fn tls_level<T>(self, tls_level: TlsLevel) -> Self
+        where T:  FnMut(&mut SslContext) -> Result<SslAcceptorBuilder> {
+        self.with_tls(|tls| tls.tls_level(tls_level))
+    }
+
 
     /// Specify the in-memory contents of the certificate.
     ///
