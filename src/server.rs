@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::acceptor::TlsAcceptor;
 use crate::certificate::CertificateVerifier;
-use crate::config::TlsConfigBuilder;
+use crate::config::{LookupFileFn, LookupHashDirFn, TlsConfigBuilder};
 use crate::Result;
 
 use futures_util::{Future, FutureExt, TryFuture};
@@ -76,6 +76,18 @@ where
     ///
     pub fn cert(self, cert: impl AsRef<[u8]>) -> Self {
         self.with_tls(|tls| tls.cert(cert.as_ref()))
+    }
+
+    /// Add file loop callback
+    ///
+    pub fn add_file_lookup(self, lookup: LookupFileFn) -> Self {
+        self.with_tls(|tls| tls.add_file_lookup(lookup))
+    }
+
+    /// Add hash dir lookup callback
+    ///
+    pub fn add_hash_dir_lookup(self, lookup: LookupHashDirFn) -> Self {
+        self.with_tls(|tls| tls.add_hash_dir_lookup(lookup))
     }
 
     /// Specify the in-memory contents of the trust anchor for optional client authentication.
