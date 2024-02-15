@@ -6,18 +6,24 @@ use crate::Result;
 /// Certificate information for a TLS connection.
 #[derive(Debug)]
 pub struct Certificate {
-    subject_name: String,
+    common_name: String,
 }
 
 impl Certificate {
     /// Creates a new certificate.
-    pub(crate) fn new(subject_name: String) -> Certificate {
-        Certificate { subject_name }
+    pub(crate) fn new(common_name: String) -> Certificate {
+        Certificate { common_name }
     }
 
-    /// Returns the subject name of the certificate.
+    /// Returns the common name of the certificate.
+    #[deprecated(note = "please use `common_name` instead")]
     pub fn subject_name(&self) -> &str {
-        &self.subject_name
+        &self.common_name
+    }
+
+    /// Returns the common name of the certificate.
+    pub fn common_name(&self) -> &str {
+        &self.common_name
     }
 }
 

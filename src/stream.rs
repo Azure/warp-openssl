@@ -51,10 +51,10 @@ impl TlsStream {
     /// Performs the TLS handshake and sets the state to `Streaming` if successful.
     /// Returns `Ok(AcceptState::Ready)` if the handshake is complete, or `Ok(AcceptState::Pending)`
     /// if the handshake is still in progress.
-    /// 
+    ///
     /// If the handshake fails, returns an `io::Error`.
     /// If the handshake succeeds but the certificate verification fails, returns an `io::Error`.
-    /// 
+    ///
     fn do_poll_accept(self: &mut Pin<&mut Self>, cx: &mut Context<'_>) -> io::Result<AcceptState> {
         debug_assert!(matches!(self.state, ConnectionState::Handshaking));
 
@@ -63,17 +63,24 @@ impl TlsStream {
                 self.state = ConnectionState::Streaming;
                 if let Some(certificate_verifier) = self.certificate_verifier.as_ref() {
                     if let Some(cert) = self.stream.ssl().peer_certificate() {
-                        let peer_subject_name = cert
+                        let common_name = cert
                             .subject_name()
                             .entries()
-                            .find(|entry| entry.object().nid().short_name().map(|x| x.eq("CN")).unwrap_or_default())
+                            .find(|entry| {
+                                entry
+                                    .object()
+                                    .nid()
+                                    .short_name()
+                                    .map(|x| x.eq("CN"))
+                                    .unwrap_or_default()
+                            })
                             .ok_or_else(|| {
                                 io::Error::new(io::ErrorKind::Other, "No CN in client certificate")
                             })?
                             .data()
                             .as_utf8()?
                             .to_string();
-                        let cert = Certificate::new(peer_subject_name);
+                        let cert = Certificate::new(common_name);
                         certificate_verifier
                             .verify_certificate(&cert)
                             .map_err(|err| {
@@ -91,9 +98,9 @@ impl TlsStream {
                 // Log the error in case of cert verification falilure otherwise warp silently ignores this
                 tracing::error!("Error in poll_accept: {:?}", e);
                 Err(e
-                .into_io_error()
-                .unwrap_or_else(|e| io::Error::new(io::ErrorKind::Other, e)))
-            },
+                    .into_io_error()
+                    .unwrap_or_else(|e| io::Error::new(io::ErrorKind::Other, e)))
+            }
             Poll::Pending => Ok(AcceptState::Pending),
         }
     }
