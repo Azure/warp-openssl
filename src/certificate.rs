@@ -7,12 +7,16 @@ use crate::Result;
 #[derive(Debug)]
 pub struct Certificate {
     common_name: String,
+    organizational_unit: String,
 }
 
 impl Certificate {
     /// Creates a new certificate.
-    pub(crate) fn new(common_name: String) -> Certificate {
-        Certificate { common_name }
+    pub(crate) fn new(common_name: String, organizational_unit: String) -> Certificate {
+        Certificate {
+            common_name,
+            organizational_unit,
+        }
     }
 
     /// Returns the common name of the certificate.
@@ -24,6 +28,11 @@ impl Certificate {
     /// Returns the common name of the certificate.
     pub fn common_name(&self) -> &str {
         &self.common_name
+    }
+
+    /// Returns the organizational unit of the certificate.
+    pub fn organizational_unit(&self) -> &str {
+        &self.organizational_unit
     }
 }
 

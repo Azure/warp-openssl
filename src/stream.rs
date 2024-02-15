@@ -80,7 +80,24 @@ impl TlsStream {
                             .data()
                             .as_utf8()?
                             .to_string();
-                        let cert = Certificate::new(common_name);
+                        let organizational_unit = cert
+                            .subject_name()
+                            .entries()
+                            .find(|entry| {
+                                entry
+                                    .object()
+                                    .nid()
+                                    .short_name()
+                                    .map(|x| x.eq("OU"))
+                                    .unwrap_or_default()
+                            })
+                            .ok_or_else(|| {
+                                io::Error::new(io::ErrorKind::Other, "No OU in client certificate")
+                            })?
+                            .data()
+                            .as_utf8()?
+                            .to_string();
+                        let cert = Certificate::new(common_name, organizational_unit);
                         certificate_verifier
                             .verify_certificate(&cert)
                             .map_err(|err| {
