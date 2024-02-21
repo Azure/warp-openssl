@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::acceptor::TlsAcceptor;
 use crate::certificate::CertificateVerifier;
-use crate::config::TlsConfigBuilder;
+use crate::config::{LookupFileFn, LookupHashDirFn, TlsConfigBuilder};
 use crate::Result;
 
 use futures_util::{Future, FutureExt, TryFuture};
@@ -50,9 +50,8 @@ pub fn serve<F>(filter: F) -> OpensslServer<F> {
     }
 }
 
-
 /// Create an openssl based TLS warp server with the provided filter.
-/// 
+///
 #[derive(Debug)]
 pub struct OpensslServer<F> {
     filter: F,
@@ -76,6 +75,20 @@ where
     ///
     pub fn cert(self, cert: impl AsRef<[u8]>) -> Self {
         self.with_tls(|tls| tls.cert(cert.as_ref()))
+    }
+
+    /// Add file loop callback that loads all the certificates or CRLs present in a file into memory at the time the file is added as a lookup source.
+    /// See [`openssl::x509::X509Lookup::file`] for more details.
+    ///
+    pub fn add_file_lookup(self, lookup: LookupFileFn) -> Self {
+        self.with_tls(|tls| tls.add_file_lookup(lookup))
+    }
+
+    /// Add hash dir lookup callback that loads certificates and CRLs on demand and caches them in memory once they are loaded.
+    /// See [`openssl::x509::X509Lookup::hash_dir`] for more details.
+    ///
+    pub fn add_hash_dir_lookup(self, lookup: LookupHashDirFn) -> Self {
+        self.with_tls(|tls| tls.add_hash_dir_lookup(lookup))
     }
 
     /// Specify the in-memory contents of the trust anchor for optional client authentication.
@@ -102,14 +115,12 @@ where
         self.with_tls(|tls| tls.client_auth_required(trust_anchor.as_ref(), certificate_verifier))
     }
 
-    /// **Not recommended** Disables partial certificate chain verification. 
-    /// 
+    /// **Not recommended** Disables partial certificate chain verification.
+    ///
     /// For certificate pinning to work properly its enough to validate that
     /// the certificate chains to an anchor in the trust store. This is the default behavior.
     ///
-    pub fn disable_partial_chain_verification(
-        self,
-    ) -> Self {
+    pub fn disable_partial_chain_verification(self) -> Self {
         self.with_tls(|tls| tls.disable_partial_chain_verification())
     }
 
