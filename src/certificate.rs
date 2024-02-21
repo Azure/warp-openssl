@@ -6,13 +6,14 @@ use crate::Result;
 /// Certificate information for a TLS connection.
 #[derive(Debug)]
 pub struct Certificate {
+    //TODO: Change to Option when `subject_name` is removed.
     common_name: String,
-    organizational_unit: String,
+    organizational_unit: Option<String>,
 }
 
 impl Certificate {
     /// Creates a new certificate.
-    pub(crate) fn new(common_name: String, organizational_unit: String) -> Certificate {
+    pub(crate) fn new(common_name: String, organizational_unit: Option<String>) -> Certificate {
         Certificate {
             common_name,
             organizational_unit,
@@ -26,13 +27,13 @@ impl Certificate {
     }
 
     /// Returns the common name of the certificate.
-    pub fn common_name(&self) -> &str {
-        &self.common_name
+    pub fn common_name(&self) -> Option<&str> {
+        Some(&self.common_name)
     }
 
     /// Returns the organizational unit of the certificate.
-    pub fn organizational_unit(&self) -> &str {
-        &self.organizational_unit
+    pub fn organizational_unit(&self) -> Option<&str> {
+        self.organizational_unit.as_deref()
     }
 }
 
