@@ -9,7 +9,7 @@ use openssl::{
     pkey::PKey,
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::{
-        store::{X509Store, X509StoreBuilder},
+        store::{HashDir, X509Lookup, X509LookupRef, X509Store, X509StoreBuilder},
         verify::X509VerifyFlags,
         X509,
     },
@@ -53,6 +53,16 @@ pub(crate) enum TlsClientAuth {
     Required((Vec<u8>, Arc<dyn CertificateVerifier>)),
 }
 
+pub type LookupFileFn = Box<dyn FnOnce(&mut X509LookupRef<openssl::x509::store::File>)>;
+pub type LookupHashDirFn = Box<dyn FnOnce(&mut X509LookupRef<HashDir>)>;
+
+pub enum Lookup {
+    File(LookupFileFn),
+    HashDir(LookupHashDirFn),
+}
+
+pub type AddLookups = Vec<Lookup>;
+
 /// Builder to set the configuration for the Tls server.
 pub(crate) struct TlsConfigBuilder {
     cert: Box<dyn Read + Send + Sync>,
@@ -60,6 +70,7 @@ pub(crate) struct TlsConfigBuilder {
     client_auth: TlsClientAuth,
     partial_chain_verification: bool,
     tls_level: TlsLevel,
+    add_lookups: AddLookups,
 }
 
 impl fmt::Debug for TlsConfigBuilder {
@@ -78,6 +89,7 @@ impl TlsConfigBuilder {
             client_auth: TlsClientAuth::Off,
             partial_chain_verification: true,
             tls_level: TlsLevel::MozillaIntermediateV5,
+            add_lookups: vec![],
         }
     }
 
@@ -116,6 +128,16 @@ impl TlsConfigBuilder {
 
     pub(crate) fn disable_partial_chain_verification(mut self) -> Self {
         self.partial_chain_verification = false;
+        self
+    }
+
+    pub(crate) fn add_file_lookup(mut self, lookup: LookupFileFn) -> Self {
+        self.add_lookups.push(Lookup::File(lookup));
+        self
+    }
+
+    pub(crate) fn add_hash_dir_lookup(mut self, lookup: LookupHashDirFn) -> Self {
+        self.add_lookups.push(Lookup::HashDir(lookup));
         self
     }
 }
@@ -183,6 +205,7 @@ impl TlsConfigBuilder {
         fn read_trust_anchor(
             mut trust_anchor: &[u8],
             partial_chain_verification: bool,
+            add_lookups: AddLookups,
         ) -> std::result::Result<X509Store, TlsConfigError> {
             let mut cert_vec = Vec::new();
             trust_anchor
@@ -196,9 +219,38 @@ impl TlsConfigBuilder {
                 store.add_cert(cert).map_err(TlsConfigError::OpensslError)?;
             }
 
+            let set_csr_check_flag = !add_lookups.is_empty();
+            for lookup in add_lookups.into_iter() {
+                match lookup {
+                    Lookup::File(lookup_file_fn) => {
+                        let lookup = store
+                            .add_lookup(X509Lookup::file())
+                            .map_err(TlsConfigError::OpensslError)?;
+                        lookup_file_fn(lookup);
+                    }
+                    Lookup::HashDir(lookup_hash_dir_fn) => {
+                        let lookup = store
+                            .add_lookup(X509Lookup::hash_dir())
+                            .map_err(TlsConfigError::OpensslError)?;
+                        lookup_hash_dir_fn(lookup);
+                    }
+                };
+            }
+
+            let mut flags = X509VerifyFlags::empty();
+
             if partial_chain_verification {
+                flags.insert(X509VerifyFlags::PARTIAL_CHAIN);
+            }
+
+            if set_csr_check_flag {
+                flags.insert(X509VerifyFlags::CRL_CHECK);
+                flags.insert(X509VerifyFlags::CRL_CHECK_ALL);
+            }
+
+            if flags != X509VerifyFlags::empty() {
                 store
-                    .set_flags(X509VerifyFlags::PARTIAL_CHAIN)
+                    .set_flags(flags)
                     .map_err(TlsConfigError::OpensslError)?;
             }
 
@@ -211,7 +263,11 @@ impl TlsConfigBuilder {
                 None
             }
             TlsClientAuth::Optional((trust_anchor, certificate_valiator)) => {
-                let store = read_trust_anchor(&trust_anchor, self.partial_chain_verification)?;
+                let store = read_trust_anchor(
+                    &trust_anchor,
+                    self.partial_chain_verification,
+                    self.add_lookups,
+                )?;
                 acceptor.set_verify(SslVerifyMode::PEER);
                 acceptor
                     .set_verify_cert_store(store)
@@ -219,7 +275,11 @@ impl TlsConfigBuilder {
                 Some(certificate_valiator)
             }
             TlsClientAuth::Required((trust_anchor, certificate_validator)) => {
-                let store = read_trust_anchor(&trust_anchor, self.partial_chain_verification)?;
+                let store = read_trust_anchor(
+                    &trust_anchor,
+                    self.partial_chain_verification,
+                    self.add_lookups,
+                )?;
                 acceptor.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
                 acceptor
                     .set_verify_cert_store(store)
