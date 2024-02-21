@@ -7,7 +7,7 @@ use std::{
 
 use openssl::{
     pkey::PKey,
-    ssl::{SslAcceptor, SslMethod, SslVerifyMode},
+    ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::{
         store::{HashDir, X509Lookup, X509LookupRef, X509Store, X509StoreBuilder},
         verify::X509VerifyFlags,
@@ -15,7 +15,7 @@ use openssl::{
     },
 };
 
-use crate::{acceptor::SslConfig, certificate::CertificateVerifier};
+use crate::{acceptor::SslConfig, certificate::CertificateVerifier, server::TlsLevel};
 
 /// Represents errors that can occur building the TlsConfig
 #[derive(Debug)]
@@ -69,6 +69,7 @@ pub(crate) struct TlsConfigBuilder {
     key: Box<dyn Read + Send + Sync>,
     client_auth: TlsClientAuth,
     partial_chain_verification: bool,
+    tls_level: TlsLevel,
     add_lookups: AddLookups,
 }
 
@@ -87,6 +88,7 @@ impl TlsConfigBuilder {
             cert: Box::new(io::empty()),
             client_auth: TlsClientAuth::Off,
             partial_chain_verification: true,
+            tls_level: TlsLevel::MozillaIntermediateV5,
             add_lookups: vec![],
         }
     }
@@ -98,6 +100,11 @@ impl TlsConfigBuilder {
 
     pub(crate) fn cert(mut self, cert: &[u8]) -> Self {
         self.cert = Box::new(Cursor::new(Vec::from(cert)));
+        self
+    }
+
+    pub(crate) fn tls_level(mut self, tls_level: TlsLevel) -> Self {
+        self.tls_level = tls_level;
         self
     }
 
@@ -119,9 +126,7 @@ impl TlsConfigBuilder {
         self
     }
 
-    pub(crate) fn disable_partial_chain_verification(
-        mut self,
-    ) -> Self {
+    pub(crate) fn disable_partial_chain_verification(mut self) -> Self {
         self.partial_chain_verification = false;
         self
     }
@@ -138,11 +143,13 @@ impl TlsConfigBuilder {
 }
 
 impl TlsConfigBuilder {
-    pub(crate) fn build(mut self) -> std::result::Result<SslConfig, TlsConfigError> {
+    fn configure_certs(
+        mut key: Box<dyn Read + Send + Sync>,
+        mut cert: Box<dyn Read + Send + Sync>,
+        tls_level: TlsLevel,
+    ) -> std::result::Result<SslAcceptorBuilder, TlsConfigError> {
         let mut key_vec = Vec::new();
-        self.key
-            .read_to_end(&mut key_vec)
-            .map_err(TlsConfigError::Io)?;
+        key.read_to_end(&mut key_vec).map_err(TlsConfigError::Io)?;
 
         if key_vec.is_empty() {
             return Err(TlsConfigError::EmptyKey);
@@ -152,8 +159,7 @@ impl TlsConfigBuilder {
             PKey::private_key_from_pem(&key_vec).map_err(TlsConfigError::OpensslError)?;
 
         let mut cert_vec = Vec::new();
-        self.cert
-            .read_to_end(&mut cert_vec)
+        cert.read_to_end(&mut cert_vec)
             .map_err(TlsConfigError::Io)?;
 
         let mut cert_chain = X509::stack_from_pem(&cert_vec)
@@ -161,8 +167,18 @@ impl TlsConfigBuilder {
             .into_iter();
         let cert = cert_chain.next().ok_or(TlsConfigError::EmptyCert)?;
         let chain: Vec<_> = cert_chain.collect();
-        let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())
-            .map_err(TlsConfigError::OpensslError)?;
+        let acceptor = match tls_level {
+            TlsLevel::MozillaModern => SslAcceptor::mozilla_modern(SslMethod::tls_server()),
+            TlsLevel::MozillaModernV5 => SslAcceptor::mozilla_modern_v5(SslMethod::tls_server()),
+            TlsLevel::MozillaIntermediate => {
+                SslAcceptor::mozilla_intermediate(SslMethod::tls_server())
+            }
+            TlsLevel::MozillaIntermediateV5 => {
+                SslAcceptor::mozilla_intermediate_v5(SslMethod::tls_server())
+            }
+        };
+        
+        let mut acceptor = acceptor.map_err(TlsConfigError::OpensslError)?;
         acceptor
             .set_private_key(&private_key)
             .map_err(TlsConfigError::OpensslError)?;
@@ -175,6 +191,12 @@ impl TlsConfigBuilder {
                 .add_extra_chain_cert(cert.to_owned())
                 .map_err(TlsConfigError::OpensslError)?;
         }
+
+        Ok(acceptor)
+    }
+
+    pub(crate) fn build(self) -> std::result::Result<SslConfig, TlsConfigError> {
+        let mut acceptor = TlsConfigBuilder::configure_certs(self.key, self.cert, self.tls_level)?;
 
         acceptor
             .set_alpn_protos(b"\x02h2\x08http/1.1")
