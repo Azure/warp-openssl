@@ -8,6 +8,9 @@ on:
         required: false
         default: "patch"
 
+permissions:
+    contents: write
+          
 concurrency: release-crate
 
 jobs:
