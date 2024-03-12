@@ -63,38 +63,21 @@ impl TlsStream {
                 self.state = ConnectionState::Streaming;
                 if let Some(certificate_verifier) = self.certificate_verifier.as_ref() {
                     if let Some(cert) = self.stream.ssl().peer_certificate() {
-                        let common_name = cert
-                            .subject_name()
-                            .entries()
-                            .find(|entry| {
-                                entry
-                                    .object()
-                                    .nid()
-                                    .short_name()
-                                    .map(|x| x.eq("CN"))
-                                    .unwrap_or_default()
-                            })
-                            .ok_or_else(|| {
-                                io::Error::new(io::ErrorKind::Other, "No CN in client certificate")
-                            })?
-                            .data()
-                            .as_utf8()?
-                            .to_string();
-                        let organizational_unit = cert
-                            .subject_name()
-                            .entries()
-                            .find(|entry| {
-                                entry
-                                    .object()
-                                    .nid()
-                                    .short_name()
-                                    .map(|x| x.eq("OU"))
-                                    .unwrap_or_default()
-                            })
-                            .and_then(|name_entry| {
-                                name_entry.data().as_utf8().ok().map(|s| s.to_string())
-                            });
-                        let cert = Certificate::new(common_name, organizational_unit);
+                        let mut common_names = vec![];
+                        let mut organizational_units = vec![];
+
+                        for entry in cert.subject_name().entries() {
+                            let list = match entry.object().nid().short_name() {
+                                Ok("CN") => &mut common_names,
+                                Ok("OU") => &mut organizational_units,
+                                _ => continue,
+                            };
+
+                            let value = entry.data().as_utf8()?.to_string();
+                            list.push(value);
+                        }
+
+                        let cert = Certificate::new(common_names, organizational_units);
                         certificate_verifier
                             .verify_certificate(&cert)
                             .map_err(|err| {

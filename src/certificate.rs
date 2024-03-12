@@ -6,34 +6,43 @@ use crate::Result;
 /// Certificate information for a TLS connection.
 #[derive(Debug)]
 pub struct Certificate {
-    //TODO: Change to Option when `subject_name` is removed.
-    common_name: String,
-    organizational_unit: Option<String>,
+    common_names: Vec<String>,
+    organizational_units: Vec<String>,
 }
 
 impl Certificate {
     /// Creates a new certificate.
-    pub(crate) fn new(common_name: String, organizational_unit: Option<String>) -> Certificate {
+    pub(crate) fn new(common_names: Vec<String>, organizational_units: Vec<String>) -> Certificate {
         Certificate {
-            common_name,
-            organizational_unit,
+            common_names,
+            organizational_units,
         }
     }
 
     /// Returns the common name of the certificate.
-    #[deprecated(note = "please use `common_name` instead")]
-    pub fn subject_name(&self) -> &str {
-        &self.common_name
+    #[deprecated(note = "please use `common_names` instead")]
+    pub fn common_name(&self) -> Option<&str> {
+        self.common_names
+            .first()
+            .map(|common_name| common_name.as_str())
     }
 
-    /// Returns the common name of the certificate.
-    pub fn common_name(&self) -> Option<&str> {
-        Some(&self.common_name)
+    /// Returns the common names of the certificate.
+    pub fn common_names(&self) -> &[String] {
+        self.common_names.as_slice()
     }
 
     /// Returns the organizational unit of the certificate.
+    #[deprecated(note = "please use `organizational_units` instead")]
     pub fn organizational_unit(&self) -> Option<&str> {
-        self.organizational_unit.as_deref()
+        self.organizational_units
+            .first()
+            .map(|organizational_unit| organizational_unit.as_str())
+    }
+
+    /// Returns the organizational units of the certificate.
+    pub fn organizational_units(&self) -> &[String] {
+        &self.organizational_units
     }
 }
 
