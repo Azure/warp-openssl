@@ -8,14 +8,20 @@ use crate::Result;
 pub struct Certificate {
     common_names: Vec<String>,
     organizational_units: Vec<String>,
+    localities: Vec<String>,
 }
 
 impl Certificate {
     /// Creates a new certificate.
-    pub(crate) fn new(common_names: Vec<String>, organizational_units: Vec<String>) -> Certificate {
+    pub(crate) fn new(
+        common_names: Vec<String>,
+        organizational_units: Vec<String>,
+        localities: Vec<String>,
+    ) -> Certificate {
         Certificate {
             common_names,
             organizational_units,
+            localities,
         }
     }
 
@@ -43,6 +49,11 @@ impl Certificate {
     /// Returns the organizational units of the certificate.
     pub fn organizational_units(&self) -> &[String] {
         &self.organizational_units
+    }
+
+    /// Returns the localities of the certificate.
+    pub fn localities(&self) -> &[String] {
+        &self.localities
     }
 }
 

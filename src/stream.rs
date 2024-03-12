@@ -65,11 +65,13 @@ impl TlsStream {
                     if let Some(cert) = self.stream.ssl().peer_certificate() {
                         let mut common_names = vec![];
                         let mut organizational_units = vec![];
+                        let mut localities = vec![];
 
                         for entry in cert.subject_name().entries() {
                             let list = match entry.object().nid().short_name() {
                                 Ok("CN") => &mut common_names,
                                 Ok("OU") => &mut organizational_units,
+                                Ok("L") => &mut localities,
                                 _ => continue,
                             };
 
@@ -77,7 +79,7 @@ impl TlsStream {
                             list.push(value);
                         }
 
-                        let cert = Certificate::new(common_names, organizational_units);
+                        let cert = Certificate::new(common_names, organizational_units, localities);
                         certificate_verifier
                             .verify_certificate(&cert)
                             .map_err(|err| {
