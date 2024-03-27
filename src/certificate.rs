@@ -16,7 +16,7 @@ pub struct Certificate {
 impl TryFrom<X509> for Certificate {
     type Error = std::io::Error;
 
-    fn try_from(cert: X509) -> std::prelude::v1::Result<Self, Self::Error> {
+    fn try_from(cert: X509) -> std::io::Result<Self> {
         let mut common_names = vec![];
         let mut organizational_units = vec![];
         let mut localities = vec![];
