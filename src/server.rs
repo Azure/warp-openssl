@@ -3,11 +3,13 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::acceptor::TlsAcceptor;
-use crate::certificate::CertificateVerifier;
+use crate::certificate::{Certificate, CertificateVerifier};
 use crate::config::{LookupFileFn, LookupHashDirFn, TlsConfigBuilder};
+use crate::stream::CloneableStream;
 use crate::Result;
 
-use futures_util::{Future, FutureExt, TryFuture};
+use futures_util::FutureExt;
+use futures_util::{Future, TryFuture};
 
 use hyper::server::conn::AddrIncoming;
 use openssl::ssl::{SslAcceptorBuilder, SslContext};
@@ -15,8 +17,9 @@ use openssl::ssl::{SslAcceptorBuilder, SslContext};
 use std::convert::Infallible;
 use warp::{Filter, Reply};
 
-use hyper::service::make_service_fn;
+use hyper::service::{make_service_fn, Service};
 use hyper::Server as HyperServer;
+use hyper::{Body, Request};
 
 macro_rules! addr_incoming {
     ($addr:expr) => {{
@@ -32,10 +35,30 @@ macro_rules! bind {
         let addr = $addr.into();
         let (addr, incoming) = addr_incoming!(&addr);
         let service = warp::service($this.filter);
-        let make_svc = make_service_fn(move |_| {
+        let make_svc = make_service_fn(move |stream| {
+            let stream: CloneableStream = {
+                let stream: &crate::stream::TlsStream = stream;
+                stream.stream()
+            };
+
+            let mut service = service.clone();
+            let svc = hyper::service::service_fn(move |mut req: Request<Body>| {
+                let certificate: Option<Certificate> = stream
+                    .lock()
+                    .ok()
+                    .and_then(|stream| stream.ssl().peer_certificate())
+                    .and_then(|peer_certificate| peer_certificate.try_into().ok());
+
+                if let Some(certificate) = certificate {
+                    req.extensions_mut().insert(certificate);
+                };
+
+                service.call(req)
+            });
+
             // let remote_addr = socket.remote_addr();
-            let service = service.clone();
-            async move { Ok::<_, Infallible>(service.clone()) }
+            let svc = svc.clone();
+            async move { Ok::<_, Infallible>(svc.clone()) }
         });
 
         let srv = HyperServer::builder(TlsAcceptor::new(tls, incoming)).serve(make_svc);
@@ -68,7 +91,7 @@ pub enum TlsLevel {
     MozillaIntermediate,
     /// Settings corresponding to the intermediate configuration of version 5 of Mozilla's server side TLS
     /// recommendations
-    MozillaIntermediateV5
+    MozillaIntermediateV5,
 }
 
 /// Create an openssl based TLS warp server with the provided filter.
@@ -94,15 +117,16 @@ where
 
     /// Specify the tls level based on Mozilla's server side TLS recommendations.
     /// See its [documentation][docs] for more details on specifics.
-    /// 
+    ///
     /// Defaults to `TlsLevel::MozillaIntermediateV5`.
     ///
     /// [docs]: https://wiki.mozilla.org/Security/Server_Side_TLS
     pub fn tls_level<T>(self, tls_level: TlsLevel) -> Self
-        where T:  FnMut(&mut SslContext) -> Result<SslAcceptorBuilder> {
+    where
+        T: FnMut(&mut SslContext) -> Result<SslAcceptorBuilder>,
+    {
         self.with_tls(|tls| tls.tls_level(tls_level))
     }
-
 
     /// Specify the in-memory contents of the certificate.
     ///

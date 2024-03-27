@@ -4,7 +4,10 @@ version = "0.5.3"
 edition = "2021"
 description = "OpenSSL bindings for Warp TLS server"
 license = "MIT"
-authors = ["Sandeep Bansal <sandeep.bansal85@gmail.com>"]
+authors = [
+    "Sandeep Bansal <sandeep.bansal85@gmail.com>",
+    "René Rössler <rene@freshx.de>",
+]
 readme = "README.md"
 documentation = "https://docs.rs/warp-openssl"
 repository = "https://github.com/Azure/warp-openssl"
@@ -23,10 +26,17 @@ tokio = { version = "1" }
 tracing = "0.1"
 futures-util = "0.3"
 warp = "0.3"
-hyper = { version = "0.14", features = ["stream", "server", "http1", "http2", "tcp", "client"] }
+hyper = { version = "0.14", features = [
+    "stream",
+    "server",
+    "http1",
+    "http2",
+    "tcp",
+    "client",
+] }
 
 [dev-dependencies]
-reqwest = {version = "0.11", features = ["rustls-tls", "native-tls"]}
+reqwest = { version = "0.11", features = ["rustls-tls", "native-tls"] }
 rstest = "0.18.1"
 clap = { version = "4.4.18", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }

@@ -7,21 +7,21 @@
 //!
 //! warp-openssl adds an openssl compatibility layer  to [warp](https://docs.rs/warp).
 //!
-//! By default warp ships with support for rustls as the TLS layer which makes warp 
+//! By default warp ships with support for rustls as the TLS layer which makes warp
 //! unusable in some environments where only openssl is allowed.
-//! 
-//! In order to use the openssl compatibility layer just import serve from warp_openssl 
+//!
+//! In order to use the openssl compatibility layer just import serve from warp_openssl
 //! instead of warp.
-//! 
+//!
 //! So the following example:
 //! ```
 //!  use warp::serve;
-//! 
+//!
 //!  let server = serve(warp::Filter::map(warp::any(), || "Hello, World!"));
 //! ```
-//! 
+//!
 //! would convert to:
-//! 
+//!
 //! ```
 //!  use warp_openssl::serve;
 //!  
@@ -31,10 +31,25 @@
 //!     .key(key)
 //!     .cert(cert);
 //! ```
-//! 
+//!
 //! There is additional support for SSL key logging file to enable viewing network traffic in wireshark.
 //! Just set the SSLKEYLOGFILE environment variable to the path of the file you want to use
 //! and the key log gets generated to that file.
+//!
+//! The client certificate can be accessed in a filter by getting the extension:
+//!
+//!  ```
+//!  use warp_openssl::serve;
+//!  
+//!  let cert = vec![]; // certificate to use
+//!  let key = vec![]; // private key for the certificate
+//!  let server = serve(warp::Filter::map(
+//!     warp::Filter::and(warp::any(), warp::filters::ext::optional()),
+//!     |_cert: Option<warp_openssl::Certificate>| "Hello, World!"
+//!  ))
+//!  .key(key)
+//!  .cert(cert);
+//! ```
 
 #[doc(hidden)]
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -45,7 +60,7 @@ mod acceptor;
 mod certificate;
 mod config;
 mod server;
-pub use server::{OpensslServer, serve};
 mod stream;
 
 pub use certificate::{Certificate, CertificateVerifier};
+pub use server::{serve, OpensslServer};
