@@ -88,9 +88,16 @@ async fn client_tests(
     let intermediate_cert = include_bytes!("../certs/intermediate.crt").to_vec();
 
     let (tx, rx) = oneshot::channel::<()>();
-    let server = serve(warp::Filter::map(warp::any(), || "Hello, World!"))
-        .key(include_bytes!("../certs/localhost.key"))
-        .cert(host_cert);
+
+    let server = serve(warp::Filter::map(
+        warp::Filter::and(warp::any(), warp::filters::ext::optional()),
+        move |cert: Option<warp_openssl::Certificate>| {
+            assert!(!use_client_auth || cert.is_some());
+            "Hello, World!"
+        },
+    ))
+    .key(include_bytes!("../certs/localhost.key"))
+    .cert(host_cert);
 
     let server = match auth_type {
         AuthType::Off => server,

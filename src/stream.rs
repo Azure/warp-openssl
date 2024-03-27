@@ -1,7 +1,7 @@
 use std::{
     io,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
 };
 
@@ -10,10 +10,9 @@ use openssl::ssl::Ssl;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_openssl::SslStream;
 
-use crate::{
-    acceptor::SslConfig,
-    certificate::{Certificate, CertificateVerifier},
-};
+use crate::{acceptor::SslConfig, certificate::CertificateVerifier};
+
+pub(crate) type CloneableStream = Arc<Mutex<SslStream<AddrStream>>>;
 
 enum AcceptState {
     Pending,
@@ -29,7 +28,7 @@ enum ConnectionState {
 /// certificate validation.
 pub(crate) struct TlsStream {
     state: ConnectionState,
-    stream: SslStream<AddrStream>,
+    stream: CloneableStream,
     certificate_verifier: Option<Arc<dyn CertificateVerifier>>,
 }
 
@@ -39,13 +38,19 @@ impl TlsStream {
         ssl_config: &SslConfig,
     ) -> std::result::Result<TlsStream, io::Error> {
         let ssl = Ssl::new(ssl_config.acceptor.context()).map_err(io::Error::from)?;
-        let stream = SslStream::new(ssl, stream).map_err(io::Error::from)?;
+        let stream = Arc::new(Mutex::new(
+            SslStream::new(ssl, stream).map_err(io::Error::from)?,
+        ));
 
         Ok(TlsStream {
             state: ConnectionState::Handshaking,
             stream,
             certificate_verifier: ssl_config.certificate_verifier.clone(),
         })
+    }
+
+    pub(crate) fn stream(&self) -> CloneableStream {
+        self.stream.clone()
     }
 
     /// Performs the TLS handshake and sets the state to `Streaming` if successful.
@@ -58,10 +63,14 @@ impl TlsStream {
     fn do_poll_accept(self: &mut Pin<&mut Self>, cx: &mut Context<'_>) -> io::Result<AcceptState> {
         debug_assert!(matches!(self.state, ConnectionState::Handshaking));
 
-        match Pin::new(&mut self.stream).poll_accept(cx) {
+        let stream = self.stream();
+        let mut stream = stream.lock().expect("Could not lock stream");
+
+        match Pin::new(&mut *stream).poll_accept(cx) {
             Poll::Ready(Ok(_)) => {
                 self.state = ConnectionState::Streaming;
                 if let Some(certificate_verifier) = self.certificate_verifier.as_ref() {
+                    if let Some(cert) = stream.ssl().peer_certificate() {
                         let cert = cert.try_into()?;
                         certificate_verifier
                             .verify_certificate(&cert)
@@ -99,7 +108,10 @@ impl AsyncRead for TlsStream {
                 AcceptState::Pending => Poll::Pending,
                 AcceptState::Ready => self.poll_read(cx, buf),
             },
-            ConnectionState::Streaming => Pin::new(&mut self.stream).poll_read(cx, buf),
+            ConnectionState::Streaming => {
+                let mut stream = self.stream.lock().expect("Could not lock stream");
+                Pin::new(&mut *stream).poll_read(cx, buf)
+            }
         }
     }
 }
@@ -115,27 +127,36 @@ impl AsyncWrite for TlsStream {
                 AcceptState::Pending => Poll::Pending,
                 AcceptState::Ready => self.poll_write(cx, buf),
             },
-            ConnectionState::Streaming => Pin::new(&mut self.stream).poll_write(cx, buf),
+            ConnectionState::Streaming => {
+                let mut stream = self.stream.lock().expect("Could not lock stream");
+                Pin::new(&mut *stream).poll_write(cx, buf)
+            }
         }
     }
 
     fn poll_flush(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), io::Error>> {
         match self.state {
             ConnectionState::Handshaking => Poll::Ready(Ok(())),
-            ConnectionState::Streaming => Pin::new(&mut self.stream).poll_flush(cx),
+            ConnectionState::Streaming => {
+                let mut stream = self.stream.lock().expect("Could not lock stream");
+                Pin::new(&mut *stream).poll_flush(cx)
+            }
         }
     }
 
     fn poll_shutdown(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), io::Error>> {
         match self.state {
             ConnectionState::Handshaking => Poll::Ready(Ok(())),
-            ConnectionState::Streaming => Pin::new(&mut self.stream).poll_shutdown(cx),
+            ConnectionState::Streaming => {
+                let mut stream = self.stream.lock().expect("Could not lock stream");
+                Pin::new(&mut *stream).poll_shutdown(cx)
+            }
         }
     }
 }
