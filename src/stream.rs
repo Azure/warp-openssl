@@ -62,24 +62,7 @@ impl TlsStream {
             Poll::Ready(Ok(_)) => {
                 self.state = ConnectionState::Streaming;
                 if let Some(certificate_verifier) = self.certificate_verifier.as_ref() {
-                    if let Some(cert) = self.stream.ssl().peer_certificate() {
-                        let mut common_names = vec![];
-                        let mut organizational_units = vec![];
-                        let mut localities = vec![];
-
-                        for entry in cert.subject_name().entries() {
-                            let list = match entry.object().nid().short_name() {
-                                Ok("CN") => &mut common_names,
-                                Ok("OU") => &mut organizational_units,
-                                Ok("L") => &mut localities,
-                                _ => continue,
-                            };
-
-                            let value = entry.data().as_utf8()?.to_string();
-                            list.push(value);
-                        }
-
-                        let cert = Certificate::new(common_names, organizational_units, localities);
+                        let cert = cert.try_into()?;
                         certificate_verifier
                             .verify_certificate(&cert)
                             .map_err(|err| {

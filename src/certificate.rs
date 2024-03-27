@@ -1,14 +1,40 @@
 use core::fmt;
 use std::fmt::{Debug, Formatter};
 
+use openssl::x509::X509;
+
 use crate::Result;
 
 /// Certificate information for a TLS connection.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Certificate {
     common_names: Vec<String>,
     organizational_units: Vec<String>,
     localities: Vec<String>,
+}
+
+impl TryFrom<X509> for Certificate {
+    type Error = std::io::Error;
+
+    fn try_from(cert: X509) -> std::prelude::v1::Result<Self, Self::Error> {
+        let mut common_names = vec![];
+        let mut organizational_units = vec![];
+        let mut localities = vec![];
+
+        for entry in cert.subject_name().entries() {
+            let list = match entry.object().nid().short_name() {
+                Ok("CN") => &mut common_names,
+                Ok("OU") => &mut organizational_units,
+                Ok("L") => &mut localities,
+                _ => continue,
+            };
+
+            let value = entry.data().as_utf8()?.to_string();
+            list.push(value);
+        }
+
+        Ok(Self::new(common_names, organizational_units, localities))
+    }
 }
 
 impl Certificate {
