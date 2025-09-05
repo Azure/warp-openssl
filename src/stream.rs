@@ -96,12 +96,12 @@ impl TlsStream {
     }
 }
 
-impl AsyncRead for TlsStream {
+impl hyper::rt::Read for TlsStream {
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
+        buf: hyper::rt::ReadBufCursor<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
         match self.state {
             ConnectionState::Handshaking => match self.do_poll_accept(cx)? {
                 AcceptState::Pending => Poll::Pending,
@@ -115,12 +115,12 @@ impl AsyncRead for TlsStream {
     }
 }
 
-impl AsyncWrite for TlsStream {
+impl hyper::rt::Write for TlsStream {
     fn poll_write(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<std::result::Result<usize, io::Error>> {
+    ) -> Poll<Result<usize, std::io::Error>> {
         match self.state {
             ConnectionState::Handshaking => match self.do_poll_accept(cx)? {
                 AcceptState::Pending => Poll::Pending,
@@ -133,10 +133,7 @@ impl AsyncWrite for TlsStream {
         }
     }
 
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<std::result::Result<(), io::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
         match self.state {
             ConnectionState::Handshaking => Poll::Ready(Ok(())),
             ConnectionState::Streaming => {
@@ -149,7 +146,7 @@ impl AsyncWrite for TlsStream {
     fn poll_shutdown(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<std::result::Result<(), io::Error>> {
+    ) -> Poll<Result<(), std::io::Error>> {
         match self.state {
             ConnectionState::Handshaking => Poll::Ready(Ok(())),
             ConnectionState::Streaming => {
