@@ -6,7 +6,7 @@ use std::{
 };
 
 use openssl::ssl::Ssl;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_openssl::SslStream;
 
 use crate::{acceptor::SslConfig, certificate::CertificateVerifier, tcp::AddrStream};
@@ -98,9 +98,9 @@ impl TlsStream {
 
 impl hyper::rt::Read for TlsStream {
     fn poll_read(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: hyper::rt::ReadBufCursor<'_>,
+        mut buf: hyper::rt::ReadBufCursor<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
         match self.state {
             ConnectionState::Handshaking => match self.do_poll_accept(cx)? {
@@ -109,7 +109,16 @@ impl hyper::rt::Read for TlsStream {
             },
             ConnectionState::Streaming => {
                 let mut stream = self.stream.lock().expect("Could not lock stream");
-                Pin::new(&mut *stream).poll_read(cx, buf)
+                let mut read_buf = ReadBuf::uninit(unsafe { buf.as_mut() });
+                match Pin::new(&mut *stream).poll_read(cx, &mut read_buf) {
+                    Poll::Ready(Ok(_)) => {
+                        let amount = read_buf.filled().len();
+                        drop(read_buf);
+                        unsafe { buf.advance(amount) };
+                        Poll::Ready(Ok(()))
+                    }
+                    other => other,
+                }
             }
         }
     }
@@ -117,7 +126,7 @@ impl hyper::rt::Read for TlsStream {
 
 impl hyper::rt::Write for TlsStream {
     fn poll_write(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, std::io::Error>> {
