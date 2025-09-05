@@ -56,11 +56,13 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 #[doc(hidden)]
 pub type Result<T> = std::result::Result<T, Error>;
 
+mod abort_task_on_drop;
 mod acceptor;
 mod certificate;
 mod config;
 mod server;
 mod stream;
+mod tcp;
 
 pub use certificate::{Certificate, CertificateVerifier};
 pub use server::{serve, OpensslServer};

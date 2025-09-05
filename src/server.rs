@@ -2,68 +2,81 @@ use std::net::SocketAddr;
 
 use std::sync::Arc;
 
-use crate::acceptor::TlsAcceptor;
+use crate::abort_task_on_drop::AbortTaskOnDrop;
 use crate::certificate::{Certificate, CertificateVerifier};
 use crate::config::{LookupFileFn, LookupHashDirFn, TlsConfigBuilder};
-use crate::stream::CloneableStream;
+use crate::stream::{CloneableStream, TlsStream};
+use crate::tcp::AddrIncoming;
 use crate::Result;
 
-use futures_util::FutureExt;
-use futures_util::{Future, TryFuture};
+use futures_util::{StreamExt, TryFuture};
 
-use hyper::server::conn::AddrIncoming;
 use openssl::ssl::{SslAcceptorBuilder, SslContext};
 
 use std::convert::Infallible;
 use warp::{Filter, Reply};
 
-use hyper::service::{make_service_fn, Service};
-use hyper::Server as HyperServer;
-use hyper::{Body, Request};
+use hyper::body::Body;
+use hyper::service::Service;
+use hyper::Request;
 
-macro_rules! addr_incoming {
-    ($addr:expr) => {{
-        let mut incoming = AddrIncoming::bind($addr)?;
-        incoming.set_nodelay(true);
-        let addr = incoming.local_addr();
-        (addr, incoming)
-    }};
-}
-macro_rules! bind {
-    ($this:ident, $addr:expr) => {{
-        let tls = $this.tls.build()?;
-        let addr = $addr.into();
-        let (addr, incoming) = addr_incoming!(&addr);
-        let service = warp::service($this.filter);
-        let make_svc = make_service_fn(move |stream| {
-            let stream: CloneableStream = {
-                let stream: &crate::stream::TlsStream = stream;
-                stream.stream()
+use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder as HyperServerBuilder};
+
+fn bind<F>(
+    server: &OpensslServer<F>,
+    addr: impl Into<SocketAddr>,
+) -> Result<(SocketAddr, WarpOpensslHandle)>
+where
+    F: Filter + Clone + Send + Sync + 'static,
+    <F::Future as TryFuture>::Ok: Reply,
+{
+    let ssl_config = server.tls.build()?;
+    let addr = addr.into();
+    let mut incoming = AddrIncoming::bind(&addr)?;
+    incoming.set_nodelay(true);
+    let local_addr = incoming.local_addr();
+    let service = warp::service(server.filter.clone());
+
+    let make_svc = hyper::service::make_service_fn(move |stream| {
+        let stream: CloneableStream = {
+            let stream: &crate::stream::TlsStream = stream;
+            stream.stream()
+        };
+
+        let mut service = service.clone();
+        let svc = hyper::service::service_fn(move |mut req: Request<dyn Body>| {
+            let certificate: Option<Certificate> = stream
+                .lock()
+                .ok()
+                .and_then(|stream| stream.ssl().peer_certificate())
+                .and_then(|peer_certificate| peer_certificate.try_into().ok());
+
+            if let Some(certificate) = certificate {
+                req.extensions_mut().insert(certificate);
             };
 
-            let mut service = service.clone();
-            let svc = hyper::service::service_fn(move |mut req: Request<Body>| {
-                let certificate: Option<Certificate> = stream
-                    .lock()
-                    .ok()
-                    .and_then(|stream| stream.ssl().peer_certificate())
-                    .and_then(|peer_certificate| peer_certificate.try_into().ok());
-
-                if let Some(certificate) = certificate {
-                    req.extensions_mut().insert(certificate);
-                };
-
-                service.call(req)
-            });
-
-            // let remote_addr = socket.remote_addr();
-            let svc = svc.clone();
-            async move { Ok::<_, Infallible>(svc.clone()) }
+            service.call(req)
         });
 
-        let srv = HyperServer::builder(TlsAcceptor::new(tls, incoming)).serve(make_svc);
-        Ok::<_, Box<dyn std::error::Error + Send + Sync>>((addr, srv))
-    }};
+        let svc = svc.clone();
+        async move { Ok::<_, Infallible>(svc.clone()) }
+    });
+
+    let handle = tokio::spawn(async move {
+        while let Some(stream) = incoming.next().await {
+            let tls_stream = match TlsStream::new(stream, &ssl_config) {
+                Ok(stream) => stream,
+                Err(err) => {
+                    tracing::error!("Could not accept tls stream: {err:?}");
+                    continue;
+                }
+            };
+            let srv = HyperServerBuilder::new(TokioExecutor::new())
+                .serve_connection(tls_stream, make_svc);
+        }
+    });
+
+    Ok((local_addr, WarpOpensslHandle(handle.into())))
 }
 
 /// Create an `OpensslServer` with the provided `Filter`.
@@ -192,38 +205,12 @@ where
 
     /// Create a tls server bound to a sepecific port.
     ///
-    pub fn bind(
-        self,
-        addr: impl Into<SocketAddr>,
-    ) -> Result<(SocketAddr, impl Future<Output = ()> + 'static)> {
-        let (addr, srv) = bind!(self, addr)?;
+    pub fn bind(self, addr: impl Into<SocketAddr>) -> Result<(SocketAddr, WarpOpensslHandle)> {
+        let (addr, handle) = bind(&self, addr)?;
 
-        let srv = srv.map(|result| {
-            if let Err(err) = result {
-                tracing::error!("server error: {}", err)
-            }
-        });
-
-        Ok((addr, srv))
-    }
-
-    /// Create a tls server bound to a specific port with graceful shutdown signal.
-    ///
-    /// When the signal completes, the server will start the graceful shutdown
-    /// process.
-    ///
-    pub fn bind_with_graceful_shutdown(
-        self,
-        addr: impl Into<SocketAddr>,
-        signal: impl Future<Output = ()> + Send + 'static,
-    ) -> Result<(SocketAddr, impl Future<Output = ()> + 'static)> {
-        let (addr, srv) = bind!(self, addr)?;
-        let srv = srv.with_graceful_shutdown(signal).map(|result| {
-            if let Err(err) = result {
-                tracing::error!("server error: {}", err)
-            }
-        });
-
-        Ok((addr, srv))
+        Ok((addr, handle))
     }
 }
+
+/// Stops the server if dropped
+pub struct WarpOpensslHandle(AbortTaskOnDrop);

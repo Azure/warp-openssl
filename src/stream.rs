@@ -5,12 +5,11 @@ use std::{
     task::{Context, Poll},
 };
 
-use hyper::server::conn::AddrStream;
 use openssl::ssl::Ssl;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_openssl::SslStream;
 
-use crate::{acceptor::SslConfig, certificate::CertificateVerifier};
+use crate::{acceptor::SslConfig, certificate::CertificateVerifier, tcp::AddrStream};
 
 pub(crate) type CloneableStream = Arc<Mutex<SslStream<AddrStream>>>;
 
