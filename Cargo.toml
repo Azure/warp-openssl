@@ -29,6 +29,7 @@ warp = "0.4"
 hyper = { version = "1", features = ["server", "http1", "http2", "client"] }
 hyper-util = { version = "0.1", features = ["full"] }
 pin-project-lite = "0.2"
+tower-service = "0.3"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["rustls-tls", "native-tls"] }

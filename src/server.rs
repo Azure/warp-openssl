@@ -1,29 +1,22 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
-use std::sync::Arc;
-
-use crate::abort_task_on_drop::AbortTaskOnDrop;
-use crate::certificate::{Certificate, CertificateVerifier};
-use crate::config::{LookupFileFn, LookupHashDirFn, TlsConfigBuilder};
-use crate::stream::{CloneableStream, TlsStream};
-use crate::tcp::AddrIncoming;
-use crate::Result;
+use crate::{
+    abort_task_on_drop::AbortTaskOnDrop,
+    certificate::{Certificate, CertificateVerifier},
+    config::{LookupFileFn, LookupHashDirFn, TlsConfigBuilder},
+    stream::TlsStream,
+    tcp::AddrIncoming,
+    Result,
+};
 
 use futures_util::{StreamExt, TryFuture};
-
+use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder as HyperServerBuilder};
 use openssl::ssl::{SslAcceptorBuilder, SslContext};
-
-use std::convert::Infallible;
+use tower_service::Service;
 use warp::{Filter, Reply};
 
-use hyper::body::Body;
-use hyper::service::Service;
-use hyper::Request;
-
-use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder as HyperServerBuilder};
-
 fn bind<F>(
-    server: &OpensslServer<F>,
+    server: OpensslServer<F>,
     addr: impl Into<SocketAddr>,
 ) -> Result<(SocketAddr, WarpOpensslHandle)>
 where
@@ -37,32 +30,8 @@ where
     let local_addr = incoming.local_addr();
     let service = warp::service(server.filter.clone());
 
-    let make_svc = hyper::service::make_service_fn(move |stream| {
-        let stream: CloneableStream = {
-            let stream: &crate::stream::TlsStream = stream;
-            stream.stream()
-        };
-
-        let mut service = service.clone();
-        let svc = hyper::service::service_fn(move |mut req: Request<dyn Body>| {
-            let certificate: Option<Certificate> = stream
-                .lock()
-                .ok()
-                .and_then(|stream| stream.ssl().peer_certificate())
-                .and_then(|peer_certificate| peer_certificate.try_into().ok());
-
-            if let Some(certificate) = certificate {
-                req.extensions_mut().insert(certificate);
-            };
-
-            service.call(req)
-        });
-
-        let svc = svc.clone();
-        async move { Ok::<_, Infallible>(svc.clone()) }
-    });
-
     let handle = tokio::spawn(async move {
+        let server = HyperServerBuilder::new(TokioExecutor::new());
         while let Some(stream) = incoming.next().await {
             let tls_stream = match TlsStream::new(stream, &ssl_config) {
                 Ok(stream) => stream,
@@ -71,8 +40,31 @@ where
                     continue;
                 }
             };
-            let srv = HyperServerBuilder::new(TokioExecutor::new())
-                .serve_connection(tls_stream, make_svc);
+
+            let certificate: Option<Certificate> = tls_stream
+                .stream()
+                .lock()
+                .ok()
+                .and_then(|stream| stream.ssl().peer_certificate())
+                .and_then(|peer_certificate| peer_certificate.try_into().ok());
+
+            let service = service.clone();
+            let svc = hyper::service::service_fn(move |mut request| {
+                if let Some(certificate) = certificate.clone() {
+                    request.extensions_mut().insert(certificate);
+                };
+
+                let mut service = service.clone();
+                service.call(request)
+            });
+
+            let server = server.clone();
+            tokio::spawn(async move {
+                let connection = server.serve_connection(tls_stream, svc);
+                if let Err(err) = connection.await {
+                    tracing::error!("Error serving connection: {:?}", err);
+                }
+            });
         }
     });
 
@@ -206,11 +198,13 @@ where
     /// Create a tls server bound to a sepecific port.
     ///
     pub fn bind(self, addr: impl Into<SocketAddr>) -> Result<(SocketAddr, WarpOpensslHandle)> {
-        let (addr, handle) = bind(&self, addr)?;
+        let (addr, handle) = bind(self, addr)?;
 
         Ok((addr, handle))
     }
 }
 
 /// Stops the server if dropped
+#[derive(Debug)]
+#[allow(dead_code)]
 pub struct WarpOpensslHandle(AbortTaskOnDrop);

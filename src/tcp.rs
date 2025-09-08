@@ -68,25 +68,6 @@ impl AddrIncoming {
         self.tcp_nodelay = enabled;
         self
     }
-
-    /// Set whether to sleep on accept errors.
-    ///
-    /// A possible scenario is that the process has hit the max open files
-    /// allowed, and so trying to accept a new connection will fail with
-    /// `EMFILE`. In some cases, it's preferable to just wait for some time, if
-    /// the application will likely close some files (or connections), and try
-    /// to accept the connection again. If this option is `true`, the error
-    /// will be logged at the `error` level, since it is still a big deal,
-    /// and then the listener will sleep for 1 second.
-    ///
-    /// In other cases, hitting the max open files should be treat similarly
-    /// to being out-of-memory, and simply error (and shutdown). Setting
-    /// this option to `false` will allow that.
-    ///
-    /// Default is `true`.
-    pub fn set_sleep_on_errors(&mut self, val: bool) {
-        self.sleep_on_errors = val;
-    }
 }
 
 impl Stream for AddrIncoming {
@@ -220,35 +201,6 @@ mod addr_stream {
                 local_addr,
             }
         }
-
-        /// Returns the remote (peer) address of this connection.
-        #[inline]
-        pub fn remote_addr(&self) -> SocketAddr {
-            self.remote_addr
-        }
-
-        /// Returns the local address of this connection.
-        #[inline]
-        pub fn local_addr(&self) -> SocketAddr {
-            self.local_addr
-        }
-
-        /// Consumes the AddrStream and returns the underlying IO object
-        #[inline]
-        pub fn into_inner(self) -> TcpStream {
-            self.inner
-        }
-
-        /// Attempt to receive data on the socket, without removing that data
-        /// from the queue, registering the current task for wakeup if data is
-        /// not yet available.
-        pub fn poll_peek(
-            &mut self,
-            cx: &mut Context<'_>,
-            buf: &mut tokio::io::ReadBuf<'_>,
-        ) -> Poll<io::Result<usize>> {
-            self.inner.poll_peek(cx, buf)
-        }
     }
 
     impl AsyncRead for AddrStream {
@@ -314,5 +266,5 @@ pub(super) fn new_listen_error<E>(error: E) -> Error
 where
     E: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
-    Error::new(io::ErrorKind::Other, error)
+    Error::other(error)
 }

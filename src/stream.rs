@@ -78,7 +78,7 @@ impl TlsStream {
                                     "Certificate validation failed for certificate: {:?}",
                                     cert
                                 );
-                                io::Error::new(io::ErrorKind::Other, err)
+                                io::Error::other(err)
                             })?
                     }
                 }
@@ -87,9 +87,7 @@ impl TlsStream {
             Poll::Ready(Err(e)) => {
                 // Log the error in case of cert verification falilure otherwise warp silently ignores this
                 tracing::error!("Error in poll_accept: {:?}", e);
-                Err(e
-                    .into_io_error()
-                    .unwrap_or_else(|e| io::Error::new(io::ErrorKind::Other, e)))
+                Err(e.into_io_error().unwrap_or_else(io::Error::other))
             }
             Poll::Pending => Ok(AcceptState::Pending),
         }
@@ -113,7 +111,6 @@ impl hyper::rt::Read for TlsStream {
                 match Pin::new(&mut *stream).poll_read(cx, &mut read_buf) {
                     Poll::Ready(Ok(_)) => {
                         let amount = read_buf.filled().len();
-                        drop(read_buf);
                         unsafe { buf.advance(amount) };
                         Poll::Ready(Ok(()))
                     }
