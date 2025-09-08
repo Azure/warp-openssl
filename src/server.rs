@@ -1,7 +1,12 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    future::Future,
+    net::SocketAddr,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use crate::{
-    abort_task_on_drop::AbortTaskOnDrop,
     certificate::{Certificate, CertificateVerifier},
     config::{LookupFileFn, LookupHashDirFn, TlsConfigBuilder},
     stream::TlsStream,
@@ -12,13 +17,15 @@ use crate::{
 use futures_util::{StreamExt, TryFuture};
 use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder as HyperServerBuilder};
 use openssl::ssl::{SslAcceptorBuilder, SslContext};
+use tokio_util::sync::CancellationToken;
 use tower_service::Service;
 use warp::{Filter, Reply};
 
 fn bind<F>(
     server: OpensslServer<F>,
     addr: impl Into<SocketAddr>,
-) -> Result<(SocketAddr, WarpOpensslHandle)>
+    cancellation_token: CancellationToken,
+) -> Result<(SocketAddr, tokio::task::JoinHandle<()>)>
 where
     F: Filter + Clone + Send + Sync + 'static,
     <F::Future as TryFuture>::Ok: Reply,
@@ -32,7 +39,22 @@ where
 
     let handle = tokio::spawn(async move {
         let server = HyperServerBuilder::new(TokioExecutor::new());
-        while let Some(stream) = incoming.next().await {
+        loop {
+            let stream = tokio::select! {
+                _ = cancellation_token.cancelled() => {
+                    tracing::info!("Shutting down warp-openssl server");
+                    break;
+                }
+                maybe_incoming = incoming.next() => {
+                    match maybe_incoming {
+                        Some(stream) => {
+                            stream
+                        }
+                        None => break,
+                    }
+                }
+            };
+
             let tls_stream = match TlsStream::new(stream, &ssl_config) {
                 Ok(stream) => stream,
                 Err(err) => {
@@ -59,16 +81,25 @@ where
             });
 
             let server = server.clone();
+            let cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {
                 let connection = server.serve_connection(tls_stream, svc);
-                if let Err(err) = connection.await {
-                    tracing::error!("Error serving connection: {:?}", err);
+
+                tokio::select! {
+                    _ = cancellation_token.cancelled() => {
+                        tracing::info!("Shutting down warp-openssl connection");
+                    }
+                    res = connection => {
+                        if let Err(err) = res {
+                            tracing::error!("Error serving connection: {:?}", err);
+                        }
+                    }
                 }
             });
         }
     });
 
-    Ok((local_addr, WarpOpensslHandle(handle.into())))
+    Ok((local_addr, handle))
 }
 
 /// Create an `OpensslServer` with the provided `Filter`.
@@ -197,14 +228,51 @@ where
 
     /// Create a tls server bound to a sepecific port.
     ///
-    pub fn bind(self, addr: impl Into<SocketAddr>) -> Result<(SocketAddr, WarpOpensslHandle)> {
-        let (addr, handle) = bind(self, addr)?;
+    pub fn bind(self, addr: impl Into<SocketAddr>) -> Result<(SocketAddr, WarpOpensslServer)> {
+        let (addr, handle) = bind(self, addr, CancellationToken::new())?;
 
-        Ok((addr, handle))
+        Ok((addr, handle.into()))
+    }
+
+    /// Create a tls server bound to a specific port with graceful shutdown signal.
+    ///
+    /// When the signal completes, the server will start the graceful shutdown
+    /// process.
+    ///
+    pub fn bind_with_graceful_shutdown(
+        self,
+        addr: impl Into<SocketAddr>,
+        signal: impl Future<Output = ()> + Send + 'static,
+    ) -> Result<(SocketAddr, WarpOpensslServer)> {
+        let cancellation_token = CancellationToken::new();
+
+        {
+            let cancellation_token = cancellation_token.clone();
+            tokio::spawn(async move {
+                signal.await;
+                cancellation_token.cancel();
+            });
+        }
+
+        let (addr, handle) = bind(self, addr, cancellation_token)?;
+
+        Ok((addr, handle.into()))
     }
 }
 
-/// Stops the server if dropped
 #[derive(Debug)]
-#[allow(dead_code)]
-pub struct WarpOpensslHandle(AbortTaskOnDrop);
+pub struct WarpOpensslServer(tokio::task::JoinHandle<()>);
+
+impl Future for WarpOpensslServer {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.get_mut().0).poll(cx).map(|_| ())
+    }
+}
+
+impl From<tokio::task::JoinHandle<()>> for WarpOpensslServer {
+    fn from(handle: tokio::task::JoinHandle<()>) -> Self {
+        WarpOpensslServer(handle)
+    }
+}

@@ -15,27 +15,32 @@ categories = ["web-programming::http-server"]
 keywords = ["warp", "openssl", "tls", "https"]
 autotests = true
 
-
 [features]
 openssl-vendored = ["openssl/vendored"]
 
 [dependencies]
 tokio-openssl = "0.6"
 openssl = { version = "0.10" }
-tokio = { version = "1" }
+tokio = { version = "1", features = ["macros", "signal", "rt", "net"] }
 tracing = "0.1"
 futures-util = "0.3"
 warp = "0.4"
 hyper = { version = "1", features = ["server", "http1", "http2", "client"] }
-hyper-util = { version = "0.1", features = ["full"] }
+hyper-util = { version = "0.1", features = [
+    "server",
+    "tokio",
+    "http1",
+    "http2",
+] }
 pin-project-lite = "0.2"
 tower-service = "0.3"
+tokio-util = "0.7.16"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["rustls-tls", "native-tls"] }
 rstest = "0.26"
 clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[test]]
