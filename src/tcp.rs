@@ -1,4 +1,4 @@
-// Mostly copied from hyper (MIT licensed).
+// Mostly copied from hyper 0.14 (MIT licensed).
 
 use futures_util::{ready, Stream};
 use std::{
@@ -126,21 +126,6 @@ impl Stream for AddrIncoming {
         }
     }
 }
-
-/*
-impl Accept for AddrIncoming {
-    type Conn = AddrStream;
-    type Error = io::Error;
-
-    fn poll_accept(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
-        let result = ready!(self.poll_next_(cx));
-        Poll::Ready(Some(result))
-    }
-}
-    */
 
 /// This function defines errors that are per-connection. Which basically
 /// means that if we get this error from `accept()` system call it means
