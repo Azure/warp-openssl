@@ -15,4 +15,6 @@ openssl x509 -req -extfile ./intermediate.cnf -sha256 -days 3650 -in intermediat
 
 openssl genpkey -out client.key -algorithm RSA -pkeyopt rsa_keygen_bits:2048
 openssl req -new -sha256 -key client.key -out client.csr -batch -subj '/CN=client'
-openssl x509 -req -sha256 -days 3650 -in client.csr -CA intermediate.crt -CAkey intermediate.key -CAcreateserial -out client.crt
+openssl x509 -req -extfile ./client.cnf -sha256 -days 3650 -in client.csr -CA intermediate.crt -CAkey intermediate.key -CAcreateserial -out client.crt
+
+openssl x509 -in client.crt -text -noout

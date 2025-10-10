@@ -9,7 +9,8 @@ use warp_openssl::{serve, CertificateVerifier};
 struct ValidCertVerifier {}
 
 impl CertificateVerifier for ValidCertVerifier {
-    fn verify_certificate(&self, _: &warp_openssl::Certificate) -> warp_openssl::Result<()> {
+    fn verify_certificate(&self, certificate: &warp_openssl::Certificate) -> warp_openssl::Result<()> {
+        tracing::info!("Valid certificate {:?}", certificate);
         Result::Ok(())
     }
 }
@@ -17,7 +18,8 @@ impl CertificateVerifier for ValidCertVerifier {
 struct InValidCertVerifier {}
 
 impl CertificateVerifier for InValidCertVerifier {
-    fn verify_certificate(&self, _: &warp_openssl::Certificate) -> warp_openssl::Result<()> {
+    fn verify_certificate(&self, certificate: &warp_openssl::Certificate) -> warp_openssl::Result<()> {
+        tracing::info!("Invalid certificate {:?}", certificate);
         Result::Err("Invalid certificate".into())
     }
 }
@@ -79,6 +81,7 @@ async fn client_tests(
     #[case] use_client_auth: bool,
     #[case] expect_error: bool,
 ) -> Result<()> {
+    let _ = env_logger::try_init();
     let addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let ca_cert = include_bytes!("../certs/ca.crt").to_vec();
 
@@ -93,6 +96,7 @@ async fn client_tests(
         warp::Filter::and(warp::any(), warp::filters::ext::optional()),
         move |cert: Option<warp_openssl::Certificate>| {
             assert!(!use_client_auth || cert.is_some());
+            tracing::info!("Returning hello world");
             "Hello, World!"
         },
     ))
