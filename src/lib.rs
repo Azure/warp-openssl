@@ -7,20 +7,10 @@
 //!
 //! warp-openssl adds an openssl compatibility layer  to [warp](https://docs.rs/warp).
 //!
-//! By default warp ships with support for rustls as the TLS layer which makes warp
-//! unusable in some environments where only openssl is allowed.
+//! warp removed support TLS layers with 0.4.
 //!
 //! In order to use the openssl compatibility layer just import serve from warp_openssl
 //! instead of warp.
-//!
-//! So the following example:
-//! ```
-//!  use warp::serve;
-//!
-//!  let server = serve(warp::Filter::map(warp::any(), || "Hello, World!"));
-//! ```
-//!
-//! would convert to:
 //!
 //! ```
 //!  use warp_openssl::serve;
