@@ -59,30 +59,31 @@ where
                 Ok(stream) => stream,
                 Err(err) => {
                     tracing::error!("Could not accept tls stream: {err:?}");
-                    continue;
+                    return;
                 }
             };
 
-            let certificate: Option<Certificate> = tls_stream
-                .stream()
-                .lock()
-                .ok()
-                .and_then(|stream| stream.ssl().peer_certificate())
-                .and_then(|peer_certificate| peer_certificate.try_into().ok());
-
             let service = service.clone();
-            let svc = hyper::service::service_fn(move |mut request| {
-                if let Some(certificate) = certificate.clone() {
-                    request.extensions_mut().insert(certificate);
-                };
-
-                let mut service = service.clone();
-                service.call(request)
-            });
-
             let server = server.clone();
             let cancellation_token = cancellation_token.clone();
             tokio::spawn(async move {
+                let stream = tls_stream.stream();
+
+                let svc = hyper::service::service_fn(move |mut request| {
+                    let certificate: Option<Certificate> = stream
+                        .lock()
+                        .ok()
+                        .and_then(|stream| stream.ssl().peer_certificate())
+                        .and_then(|peer_certificate| peer_certificate.try_into().ok());
+
+                    if let Some(certificate) = certificate {
+                        request.extensions_mut().insert(certificate);
+                    };
+
+                    let mut service = service.clone();
+                    service.call(request)
+                });
+
                 let connection = server.serve_connection(tls_stream, svc);
 
                 tokio::select! {
