@@ -42,6 +42,7 @@ rstest = "0.26"
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+env_logger = "*"
 
 [[test]]
 name = "server"
