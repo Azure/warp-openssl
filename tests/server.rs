@@ -1,3 +1,8 @@
+//! Integration tests for TLS server with client certificate authentication.
+//!
+//! This test suite validates various combinations of client authentication modes
+//! and certificate verification behavior using a local TLS server and client.
+
 use reqwest::tls::Version;
 use reqwest::{Certificate, ClientBuilder, Identity};
 use rstest::*;
@@ -6,6 +11,9 @@ use tokio::sync::oneshot;
 use warp_openssl::Result;
 use warp_openssl::{serve, CertificateVerifier};
 
+/// A certificate verifier that always accepts certificates.
+///
+/// Used in tests to validate successful authentication flows.
 struct ValidCertVerifier {}
 
 impl CertificateVerifier for ValidCertVerifier {
@@ -14,6 +22,9 @@ impl CertificateVerifier for ValidCertVerifier {
     }
 }
 
+/// A certificate verifier that always rejects certificates.
+///
+/// Used in tests to validate error handling and rejection flows.
 struct InValidCertVerifier {}
 
 impl CertificateVerifier for InValidCertVerifier {
@@ -22,17 +33,56 @@ impl CertificateVerifier for InValidCertVerifier {
     }
 }
 
+/// Specifies the client authentication mode for the TLS server.
 enum AuthType {
+    /// No client authentication required.
     Off,
+    /// Client authentication is mandatory; connections without valid client certificates are rejected.
     Required,
+    /// Client authentication is optional; certificates are verified if provided.
     Optional,
 }
 
+/// Specifies the certificate verification behavior.
 enum VeriferType {
+    /// Certificates are always accepted as valid.
     Valid,
+    /// Certificates are always rejected as invalid.
     Invalid,
 }
 
+/// Comprehensive integration test for TLS client authentication scenarios.
+///
+/// This test validates the interaction between:
+/// - Server authentication mode (off, optional, required)
+/// - Certificate verifier behavior (accept, reject)
+/// - Client certificate presentation (with/without certificate)
+/// - Expected outcomes (success, failure)
+///
+/// # Test Cases
+///
+/// - `client_auth_off_*`: Server doesn't require authentication, should always succeed
+/// - `client_auth_optional_noclient_*`: Optional auth without client cert should succeed
+/// - `client_auth_optional_client_invalid_failure`: Optional auth with invalid cert should fail
+/// - `client_auth_optional_client_valid_success`: Optional auth with valid cert should succeed
+/// - `client_auth_required_noclient_*`: Required auth without client cert should fail
+/// - `client_auth_required_client_valid_success`: Required auth with valid cert should succeed
+/// - `client_auth_required_client_invalid_*`: Required auth with invalid cert should fail
+///
+/// # Parameters
+///
+/// * `auth_type` - The authentication mode for the server
+/// * `verifier_type` - The certificate verification behavior
+/// * `use_client_auth` - Whether the client should present a certificate
+/// * `expect_error` - Whether the connection should fail
+///
+/// # Testing Strategy
+///
+/// Each test case:
+/// 1. Starts a local TLS server with specified authentication settings
+/// 2. Configures a client with optional certificate
+/// 3. Tests both TLS 1.2 and TLS 1.3 protocols
+/// 4. Validates the expected success/failure outcome
 #[rstest]
 #[case::client_auth_off_invalid_success(AuthType::Off, VeriferType::Invalid, false, false)]
 #[case::client_auth_off_valid_success(AuthType::Off, VeriferType::Valid, false, false)]
