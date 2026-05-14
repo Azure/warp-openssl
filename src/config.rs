@@ -289,7 +289,7 @@ impl TlsConfigBuilder {
         };
 
         if let Ok(filename) = env::var("SSLKEYLOGFILE") {
-            let file = Mutex::new(File::create(filename).unwrap());
+            let file = Mutex::new(File::create(filename).map_err(TlsConfigError::Io)?);
 
             acceptor.set_keylog_callback(move |_ssl, line| {
                 let mut file = file.lock().unwrap();

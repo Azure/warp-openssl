@@ -17,7 +17,10 @@ use warp_openssl::{serve, CertificateVerifier};
 struct ValidCertVerifier {}
 
 impl CertificateVerifier for ValidCertVerifier {
-    fn verify_certificate(&self, certificate: &warp_openssl::Certificate) -> warp_openssl::Result<()> {
+    fn verify_certificate(
+        &self,
+        certificate: &warp_openssl::Certificate,
+    ) -> warp_openssl::Result<()> {
         tracing::info!("Valid certificate {:?}", certificate);
         Result::Ok(())
     }
@@ -29,7 +32,10 @@ impl CertificateVerifier for ValidCertVerifier {
 struct InValidCertVerifier {}
 
 impl CertificateVerifier for InValidCertVerifier {
-    fn verify_certificate(&self, certificate: &warp_openssl::Certificate) -> warp_openssl::Result<()> {
+    fn verify_certificate(
+        &self,
+        certificate: &warp_openssl::Certificate,
+    ) -> warp_openssl::Result<()> {
         tracing::info!("Invalid certificate {:?}", certificate);
         Result::Err("Invalid certificate".into())
     }

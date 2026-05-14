@@ -63,4 +63,4 @@ mod server;
 mod stream;
 
 pub use certificate::{Certificate, CertificateVerifier};
-pub use server::{serve, OpensslServer};
+pub use server::{serve, OpensslServer, TlsLevel};

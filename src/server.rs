@@ -14,7 +14,6 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
 use hyper_util::server::graceful::GracefulShutdown;
 use hyper_util::service::TowerToHyperService;
-use openssl::ssl::{SslAcceptorBuilder, SslContext};
 
 use tokio::net::TcpListener;
 use warp::{Filter, Reply};
@@ -72,10 +71,7 @@ where
     /// Defaults to `TlsLevel::MozillaIntermediateV5`.
     ///
     /// [docs]: https://wiki.mozilla.org/Security/Server_Side_TLS
-    pub fn tls_level<T>(self, tls_level: TlsLevel) -> Self
-    where
-        T: FnMut(&mut SslContext) -> Result<SslAcceptorBuilder>,
-    {
+    pub fn tls_level(self, tls_level: TlsLevel) -> Self {
         self.with_tls(|tls| tls.tls_level(tls_level))
     }
 
@@ -166,7 +162,7 @@ where
         let srv = async move {
             let builder = auto::Builder::new(TokioExecutor::new());
             loop {
-                let (tcp_stream, _remote_addr) = match listener.accept().await {
+                let (tcp_stream, remote_addr) = match listener.accept().await {
                     Ok(conn) => conn,
                     Err(e) => {
                         tracing::error!("accept error: {}", e);
@@ -174,8 +170,8 @@ where
                     }
                 };
 
-                if tcp_stream.set_nodelay(true).is_err() {
-                    continue;
+                if let Err(e) = tcp_stream.set_nodelay(true) {
+                    tracing::warn!("set_nodelay failed for {}: {}", remote_addr, e);
                 }
 
                 let ssl_config = ssl_config.clone();
@@ -216,7 +212,7 @@ where
             loop {
                 tokio::select! {
                     result = listener.accept() => {
-                        let (tcp_stream, _remote_addr) = match result {
+                        let (tcp_stream, remote_addr) = match result {
                             Ok(conn) => conn,
                             Err(e) => {
                                 tracing::error!("accept error: {}", e);
@@ -224,8 +220,8 @@ where
                             }
                         };
 
-                        if tcp_stream.set_nodelay(true).is_err() {
-                            continue;
+                        if let Err(e) = tcp_stream.set_nodelay(true) {
+                            tracing::warn!("set_nodelay failed for {}: {}", remote_addr, e);
                         }
 
                         let ssl_config = ssl_config.clone();
