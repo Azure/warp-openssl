@@ -177,7 +177,7 @@ impl TlsConfigBuilder {
                 SslAcceptor::mozilla_intermediate_v5(SslMethod::tls_server())
             }
         };
-        
+
         let mut acceptor = acceptor.map_err(TlsConfigError::OpensslError)?;
         acceptor
             .set_private_key(&private_key)

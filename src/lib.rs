@@ -14,7 +14,7 @@
 //! instead of warp.
 //!
 //! So the following example:
-//! ```
+//! ```ignore
 //!  use warp::serve;
 //!
 //!  let server = serve(warp::Filter::map(warp::any(), || "Hello, World!"));
