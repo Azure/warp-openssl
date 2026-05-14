@@ -15,7 +15,12 @@ use openssl::{
     },
 };
 
-use crate::{acceptor::SslConfig, certificate::CertificateVerifier, server::TlsLevel};
+use crate::{certificate::CertificateVerifier, server::TlsLevel};
+
+pub(crate) struct SslConfig {
+    pub(crate) acceptor: SslAcceptor,
+    pub(crate) certificate_verifier: Option<Arc<dyn CertificateVerifier>>,
+}
 
 /// Represents errors that can occur building the TlsConfig
 #[derive(Debug)]

@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
 
-use crate::{acceptor::SslConfig, certificate::CertificateVerifier};
+use crate::{certificate::CertificateVerifier, config::SslConfig};
 
 pub(crate) type CloneableStream = Arc<Mutex<SslStream<TcpStream>>>;
 

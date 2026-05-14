@@ -2,9 +2,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use crate::acceptor::SslConfig;
 use crate::certificate::{Certificate, CertificateVerifier};
-use crate::config::{LookupFileFn, LookupHashDirFn, TlsConfigBuilder};
+use crate::config::{LookupFileFn, LookupHashDirFn, SslConfig, TlsConfigBuilder};
 use crate::stream::{CloneableStream, TlsStream};
 use crate::Result;
 
