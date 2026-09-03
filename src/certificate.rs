@@ -29,7 +29,7 @@ impl TryFrom<X509> for Certificate {
                 _ => continue,
             };
 
-            let value = entry.data().as_utf8()?.to_string();
+            let value = entry.data().to_string()?;
             list.push(value);
         }
 
