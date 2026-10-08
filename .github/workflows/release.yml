@@ -23,7 +23,7 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
       - name: Crates publish
-        uses: kaleidawave/crates-release-gh-action@main
+        uses: kaleidawave/crates-release-gh-action@520ddebc680b6da7cdceac666738729d23957e0d # v1.1
         id: release
         with:
           version: ${{ github.event.inputs.version }}
